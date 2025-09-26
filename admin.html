@@ -1,429 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin — Simple GitHub Pages CMS</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Arial;max-width:1100px;margin:20px auto;padding:16px;color:#111;background:#f7f7f8}
-    h1{margin:0 0 12px}
-    label{display:block;margin-top:10px;font-size:0.9rem}
-    input[type=text], input[type=password], select, textarea{width:100%;padding:8px;margin-top:6px;border:1px solid #ddd;border-radius:6px;background:#fff}
-    textarea{min-height:220px;font-family:monospace}
-    .row{display:flex;gap:10px}
-    .col{flex:1}
-    button{margin-top:10px;padding:8px 12px;border:0;border-radius:6px;cursor:pointer}
-    button.primary{background:#0366d6;color:#fff}
-    button.warn{background:#e11d48;color:#fff}
-    .files{margin-top:18px;border-top:1px solid #eee;padding-top:12px}
-    .file-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #eee}
-    .meta{font-size:0.9rem;color:#555}
-    .actions button{margin-left:6px}
-    .hint{font-size:0.85rem;color:#666;margin-top:6px}
-    .small{font-size:0.85rem;color:#444}
-    pre{white-space:pre-wrap;background:#fff;padding:8px;border-radius:6px;border:1px solid #eee}
+    body { font-family: sans-serif; max-width: 800px; margin: 40px auto; }
+    input, textarea, button { width: 100%; margin: 8px 0; padding: 8px; }
+    .post-item { border: 1px solid #ccc; padding: 10px; margin: 8px 0; }
   </style>
 </head>
 <body>
-  <h1>Admin — GitHub Pages Simple CMS</h1>
-  <p class="small">Masukkan butiran repo & PAT, kemudian tekan <strong>Connect</strong>. Token disimpan sementara di sessionStorage sahaja.</p>
-
-  <label>Owner (GitHub username)</label>
-  <input id="owner" placeholder="contoh: iam-fyrus">
-
-  <label>Repo (contoh: username.github.io)</label>
-  <input id="repo" placeholder="contoh: username.github.io">
-
-  <label>Path (folder tempat files) — kosongkan untuk root, atau tulis <code>blog</code></label>
-  <input id="path" placeholder="contoh: blog">
-
-  <label>Branch</label>
-  <input id="branch" value="main">
-
-  <label>Personal Access Token (PAT)</label>
-  <input id="token" type="password" placeholder="masukkan PAT (scope public_repo/repo)">
-
-  <div style="display:flex;gap:8px;margin-top:8px">
-    <button id="connectBtn" class="primary">Connect</button>
-    <button id="logoutBtn">Clear token</button>
-    <button id="refreshBtn">Refresh list</button>
+  <h1>🛠 Blog Admin Panel</h1>
+  
+  <div id="login">
+    <p>Masukkan GitHub Personal Access Token (PAT):</p>
+    <input id="tokenInput" placeholder="ghp_..." />
+    <button id="saveToken">Login</button>
   </div>
 
-  <div class="files">
-    <h2 style="margin-bottom:6px">Files in repo/path</h2>
-    <div id="fileList" class="file-list"></div>
-  </div>
+  <div id="adminArea" style="display:none">
+    <h2>📜 Post List</h2>
+    <div id="posts"></div>
 
-  <hr style="margin:18px 0">
+    <hr>
 
-  <h2>Create / Edit Post</h2>
-  <div class="row">
-    <div class="col">
-      <label>Filename (eg: post-my-title.html)</label>
-      <input id="filename" placeholder="post-2025-09-26-sunset.html">
-      <label>Title</label>
-      <input id="title" placeholder="Post title">
-      <label>Hero image URL (absolute or relative to site)</label>
-      <input id="image" placeholder="/assets/img/sample1.jpg or https://...">
-      <label>Content (HTML allowed)</label>
-      <textarea id="content" placeholder="<p>Write your post content here...</p>"></textarea>
-      <div style="display:flex;gap:8px">
-        <button id="createBtn" class="primary">Create New</button>
-        <button id="saveBtn">Save Changes</button>
-        <button id="deleteBtn" class="warn">Delete File</button>
-      </div>
-      <p class="hint">Create = buat file baru. Save = update selected file. Delete = padam selected file.</p>
-    </div>
-    <div class="col" style="min-width:300px">
-      <label>Preview template (generated)</label>
-      <pre id="preview">&lt;open a file to preview&gt;</pre>
-      <label>Last API status</label>
-      <pre id="status">idle</pre>
-    </div>
+    <h2>📝 New / Edit Post</h2>
+    <input id="filename" placeholder="contoh: post1.html">
+    <textarea id="content" rows="10" placeholder="HTML content here..."></textarea>
+    <button id="savePost">💾 Save Post</button>
   </div>
 
   <script>
-  // ---------- helper ----------
-  const elems = {
-    owner: document.getElementById('owner'),
-    repo: document.getElementById('repo'),
-    path: document.getElementById('path'),
-    branch: document.getElementById('branch'),
-    token: document.getElementById('token'),
-    connectBtn: document.getElementById('connectBtn'),
-    logoutBtn: document.getElementById('logoutBtn'),
-    refreshBtn: document.getElementById('refreshBtn'),
-    fileList: document.getElementById('fileList'),
-    filename: document.getElementById('filename'),
-    title: document.getElementById('title'),
-    image: document.getElementById('image'),
-    content: document.getElementById('content'),
-    createBtn: document.getElementById('createBtn'),
-    saveBtn: document.getElementById('saveBtn'),
-    deleteBtn: document.getElementById('deleteBtn'),
-    preview: document.getElementById('preview'),
-    status: document.getElementById('status')
-  };
+    const username = "usernameaku"; // tukar ke username GitHub kau
+    const repo = "blog";            // repo name
+    const path = "posts";           // folder post
+    const apiBase = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
 
-  // Load token and owner/repo from sessionStorage if exist
-  function loadSaved() {
-    const saved = JSON.parse(sessionStorage.getItem('gh_admin') || '{}');
-    if (saved.owner) elems.owner.value = saved.owner;
-    if (saved.repo) elems.repo.value = saved.repo;
-    if (saved.path) elems.path.value = saved.path;
-    if (saved.branch) elems.branch.value = saved.branch || 'main';
-    if (saved.token) elems.token.value = saved.token;
-  }
-  loadSaved();
+    const loginDiv = document.getElementById('login');
+    const adminDiv = document.getElementById('adminArea');
+    const postsDiv = document.getElementById('posts');
 
-  function saveSession() {
-    const data = {
-      owner: elems.owner.value.trim(),
-      repo: elems.repo.value.trim(),
-      path: elems.path.value.trim(),
-      branch: elems.branch.value.trim() || 'main',
-      token: elems.token.value.trim()
-    };
-    sessionStorage.setItem('gh_admin', JSON.stringify(data));
-  }
+    const tokenInput = document.getElementById('tokenInput');
+    const savedToken = localStorage.getItem('gh_token');
 
-  // Small helpers
-  function apiBase() {
-    const o = elems.owner.value.trim();
-    const r = elems.repo.value.trim();
-    return `https://api.github.com/repos/${encodeURIComponent(o)}/${encodeURIComponent(r)}`;
-  }
-  function apiHeaders() {
-    return {
-      'Accept': 'application/vnd.github+json',
-      'Authorization': 'token ' + elems.token.value.trim()
-    };
-  }
-  function showStatus(txt) { elems.status.textContent = txt; }
-
-  // Encode/decode base64 unicode safe
-  function encodeContent(str) {
-    return btoa(unescape(encodeURIComponent(str)));
-  }
-  function decodeContent(b64) {
-    try {
-      return decodeURIComponent(escape(atob(b64)));
-    } catch (e) {
-      // fallback
-      return atob(b64);
+    if (savedToken) {
+      loginDiv.style.display = 'none';
+      adminDiv.style.display = 'block';
+      loadPosts();
     }
-  }
 
-  // Build path helper
-  function joinPath(p, name) {
-    if (!p || p === '.' ) return name;
-    return p.replace(/^\/|\/$/g,'') + '/' + name;
-  }
+    document.getElementById('saveToken').onclick = () => {
+      const token = tokenInput.value.trim();
+      if (!token) return alert('Isi token dulu!');
+      localStorage.setItem('gh_token', token);
+      location.reload();
+    };
 
-  // Fetch list of files at path
-  async function listFiles() {
-    saveSession();
-    const path = elems.path.value.trim();
-    const branch = elems.branch.value.trim() || 'main';
-    const url = path ? `${apiBase()}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}` : `${apiBase()}/contents?ref=${encodeURIComponent(branch)}`;
-    showStatus('Listing files...');
-    try {
-      const res = await fetch(url, { headers: apiHeaders() });
+    async function loadPosts() {
+      postsDiv.innerHTML = "Loading...";
+      const token = localStorage.getItem('gh_token');
+      const res = await fetch(apiBase, {
+        headers: { Authorization: `token ${token}` }
+      });
       if (!res.ok) {
-        const text = await res.text();
-        showStatus('Error listing: ' + res.status + ' ' + text);
-        elems.fileList.innerHTML = '<div class="meta">Cannot list files (check owner/repo/path/token)</div>';
+        postsDiv.innerHTML = `❌ Error listing: ${res.status}<br>${await res.text()}`;
         return;
       }
       const data = await res.json();
-      // data is array of files
-      elems.fileList.innerHTML = '';
-      data.sort((a,b)=> (a.type===b.type? a.name.localeCompare(b.name): a.type==='dir'? -1:1));
-      data.forEach(item => {
+      postsDiv.innerHTML = "";
+      data.forEach(file => {
         const div = document.createElement('div');
-        div.className = 'file-item';
+        div.className = "post-item";
         div.innerHTML = `
-          <div>
-            <strong>${item.name}</strong>
-            <div class="meta">type: ${item.type} ${item.size? ' • ' + item.size + ' bytes' : ''}</div>
-          </div>
-          <div class="actions">
-            ${item.type === 'file' ? `<button data-name="${item.name}" class="openBtn">Open</button>` : ''}
-            ${item.type === 'file' ? `<button data-name="${item.name}" class="delBtn">Delete</button>` : ''}
-          </div>
+          <b>${file.name}</b><br>
+          <button onclick="editPost('${file.name}')">✏️ Edit</button>
+          <button onclick="deletePost('${file.name}')">🧹 Delete</button>
         `;
-        elems.fileList.appendChild(div);
+        postsDiv.appendChild(div);
       });
-      // attach listeners
-      document.querySelectorAll('.openBtn').forEach(b=>{
-        b.addEventListener('click', ()=> openFile(b.dataset.name));
-      });
-      document.querySelectorAll('.delBtn').forEach(b=>{
-        b.addEventListener('click', ()=> deleteFilePrompt(b.dataset.name));
-      });
-      showStatus('Listed ' + data.length + ' items.');
-    } catch (err) {
-      showStatus('Error: ' + err.message);
-      elems.fileList.innerHTML = '<div class="meta">Error connecting to GitHub API</div>';
     }
-  }
 
-  // Open file content
-  async function openFile(name) {
-    const path = elems.path.value.trim();
-    const branch = elems.branch.value.trim() || 'main';
-    const full = joinPath(path, name);
-    const url = `${apiBase()}/contents/${encodeURIComponent(full)}?ref=${encodeURIComponent(branch)}`;
-    showStatus('Loading file: ' + name);
-    try {
-      const res = await fetch(url, { headers: apiHeaders() });
-      if (!res.ok) {
-        showStatus('Error loading file: ' + res.status);
-        return;
-      }
+    async function editPost(name) {
+      const token = localStorage.getItem('gh_token');
+      const res = await fetch(`${apiBase}/${name}`, {
+        headers: { Authorization: `token ${token}` }
+      });
       const data = await res.json();
-      const raw = data.content ? decodeContent(data.content.replace(/\n/g,'')) : '';
-      elems.filename.value = name;
-      // try extract title and image from HTML or metadata
-      let title = '';
-      let hero = '';
-      try {
-        const mTitle = raw.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-        if (mTitle) title = mTitle[1];
-        const mImg = raw.match(/<img[^>]*src=["']([^"']+)["'][^>]*>/i);
-        if (mImg) hero = mImg[1];
-      } catch(e){}
-      elems.title.value = title;
-      elems.image.value = hero;
-      elems.content.value = raw;
-      elems.preview.textContent = raw.substring(0, 1000) + (raw.length>1000? '\n\n...':'');
-      // store file sha for update/delete
-      elems._currentFile = { name, path: full, sha: data.sha };
-      showStatus('Loaded ' + name);
-    } catch (err) {
-      showStatus('Error: ' + err.message);
+      const content = atob(data.content);
+      document.getElementById('filename').value = name;
+      document.getElementById('content').value = content;
+      document.getElementById('savePost').dataset.sha = data.sha;
     }
-  }
 
-  // Create new file
-  async function createFile() {
-    const name = elems.filename.value.trim();
-    if (!name) return alert('Please enter filename');
-    const path = elems.path.value.trim();
-    const branch = elems.branch.value.trim() || 'main';
-    const full = joinPath(path, name);
-    const content = elems.content.value || '';
-    const encoded = encodeContent(content);
-    const url = `${apiBase()}/contents/${encodeURIComponent(full)}`;
-    const body = {
-      message: `Create ${full}`,
-      content: encoded,
-      branch
-    };
-    showStatus('Creating ' + full);
-    try {
-      const res = await fetch(url, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify(body) });
-      const data = await res.json();
+    async function deletePost(name) {
+      if (!confirm(`Padam ${name}?`)) return;
+      const token = localStorage.getItem('gh_token');
+      const resGet = await fetch(`${apiBase}/${name}`, {
+        headers: { Authorization: `token ${token}` }
+      });
+      const data = await resGet.json();
+      await fetch(`${apiBase}/${name}`, {
+        method: 'DELETE',
+        headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `delete ${name}`, sha: data.sha })
+      });
+      alert('Post deleted!');
+      loadPosts();
+    }
+
+    document.getElementById('savePost').onclick = async () => {
+      const token = localStorage.getItem('gh_token');
+      const name = document.getElementById('filename').value.trim();
+      const content = btoa(document.getElementById('content').value);
+      const sha = document.getElementById('savePost').dataset.sha || null;
+
+      if (!name) return alert('Isi nama file dulu!');
+      const res = await fetch(`${apiBase}/${name}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `token ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: sha ? `edit ${name}` : `add ${name}`,
+          content: content,
+          sha: sha || undefined
+        })
+      });
       if (res.ok) {
-        showStatus('Created ' + full);
-        alert('Created ' + name);
-        await listFiles();
+        alert('Saved!');
+        document.getElementById('filename').value = '';
+        document.getElementById('content').value = '';
+        delete document.getElementById('savePost').dataset.sha;
+        loadPosts();
       } else {
-        showStatus('Create error: ' + (data && data.message));
-        alert('Error creating: ' + (data && data.message));
+        const txt = await res.text();
+        alert(`Error: ${txt}`);
       }
-    } catch (err) {
-      showStatus('Error: ' + err.message);
-    }
-  }
-
-  // Save (update) file
-  async function saveFile() {
-    if (!elems._currentFile) return alert('Open a file first to save (click Open)');
-    const full = elems._currentFile.path;
-    const sha = elems._currentFile.sha;
-    const branch = elems.branch.value.trim() || 'main';
-    const content = elems.content.value || '';
-    const encoded = encodeContent(content);
-    const url = `${apiBase()}/contents/${encodeURIComponent(full)}`;
-    const body = {
-      message: `Update ${full}`,
-      content: encoded,
-      sha,
-      branch
     };
-    showStatus('Saving ' + full);
-    try {
-      const res = await fetch(url, { method: 'PUT', headers: apiHeaders(), body: JSON.stringify(body) });
-      const data = await res.json();
-      if (res.ok) {
-        showStatus('Saved ' + full);
-        elems._currentFile.sha = data.content.sha;
-        alert('Saved ' + full);
-        await listFiles();
-      } else {
-        showStatus('Save error: ' + (data && data.message));
-        alert('Error saving: ' + (data && data.message));
-      }
-    } catch (err) {
-      showStatus('Error: ' + err.message);
-    }
-  }
-
-  // Delete file (prompt then API)
-  async function deleteFilePrompt(name) {
-    if (!confirm('Delete file: ' + name + ' ? This cannot be undone via this UI.')) return;
-    const path = elems.path.value.trim();
-    const branch = elems.branch.value.trim() || 'main';
-    const full = joinPath(path, name);
-    // need sha of file
-    showStatus('Fetching sha for ' + full);
-    try {
-      const r = await fetch(`${apiBase()}/contents/${encodeURIComponent(full)}?ref=${encodeURIComponent(branch)}`, { headers: apiHeaders() });
-      if (!r.ok) {
-        showStatus('Error fetching file info');
-        return alert('Cannot fetch file info to delete.');
-      }
-      const info = await r.json();
-      const body = {
-        message: `Delete ${full}`,
-        sha: info.sha,
-        branch
-      };
-      const del = await fetch(`${apiBase()}/contents/${encodeURIComponent(full)}`, { method: 'DELETE', headers: apiHeaders(), body: JSON.stringify(body) });
-      const delRes = await del.json();
-      if (del.ok) {
-        showStatus('Deleted ' + full);
-        alert('Deleted ' + name);
-        await listFiles();
-        // if current file is same, clear editor
-        if (elems._currentFile && elems._currentFile.name === name) {
-          elems.filename.value = '';
-          elems.title.value = '';
-          elems.image.value = '';
-          elems.content.value = '';
-          elems._currentFile = null;
-          elems.preview.textContent = '<open a file to preview>';
-        }
-      } else {
-        showStatus('Delete error: ' + (delRes && delRes.message));
-        alert('Error deleting: ' + (delRes && delRes.message));
-      }
-    } catch (err) {
-      showStatus('Error: ' + err.message);
-    }
-  }
-
-  // Delete file from editor (Delete button)
-  async function deleteCurrentFile() {
-    if (!elems._currentFile) return alert('Open a file first to delete');
-    if (!confirm('Delete current file: ' + elems._currentFile.name + ' ?')) return;
-    return deleteFilePrompt(elems._currentFile.name);
-  }
-
-  // Event wiring
-  elems.connectBtn.addEventListener('click', async ()=>{
-    if (!elems.owner.value.trim() || !elems.repo.value.trim() || !elems.token.value.trim()) {
-      return alert('Please fill owner, repo and PAT token');
-    }
-    saveSession();
-    await listFiles();
-    alert('Connected (token saved to session). You can now open/create/edit files.');
-  });
-
-  elems.logoutBtn.addEventListener('click', ()=>{
-    sessionStorage.removeItem('gh_admin');
-    elems.token.value = '';
-    elems.status.textContent = 'token cleared';
-    alert('Session cleared. Reload page to start fresh.');
-  });
-
-  elems.refreshBtn.addEventListener('click', listFiles);
-
-  elems.createBtn.addEventListener('click', async ()=> {
-    // generate a simple template if content empty
-    if (!elems.filename.value.trim()) return alert('Please set filename first (eg post-2025-09-title.html)');
-    if (!elems.content.value.trim()) {
-      const t = elems.title.value.trim() || 'Untitled';
-      const img = elems.image.value.trim() || '';
-      elems.content.value = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>${t}</title>
-  <link rel="stylesheet" href="assets/css/style.css">
-</head>
-<body>
-  <header class="hero"><img src="${img}" alt="${t}" class="hero-img"></header>
-  <section class="content" style="max-width:900px;margin:32px auto;padding:0 20px;">
-    <h1>${t}</h1>
-    <p>Write your content here...</p>
-  </section>
-</body>
-</html>`;
-    }
-    await createFile();
-  });
-
-  elems.saveBtn.addEventListener('click', saveFile);
-  elems.deleteBtn.addEventListener('click', deleteCurrentFile);
-
-  // Allow opening files by drag-drop of filename into filename input? not necessary.
-
-  // initial: if token in sessionStorage, auto list
-  (async function init() {
-    const s = JSON.parse(sessionStorage.getItem('gh_admin')||'{}');
-    if (s && s.token) {
-      elems.token.value = s.token;
-      elems.owner.value = s.owner || '';
-      elems.repo.value = s.repo || '';
-      elems.path.value = s.path || '';
-      elems.branch.value = s.branch || 'main';
-      try { await listFiles(); } catch(e){}
-    }
-  })();
-
   </script>
 </body>
 </html>
